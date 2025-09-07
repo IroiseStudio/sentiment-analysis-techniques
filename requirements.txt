@@ -7,3 +7,4 @@ transformers
 torch
 langchain>=0.2.0
 huggingface_hub
+matplotlib

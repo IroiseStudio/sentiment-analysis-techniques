@@ -11,7 +11,7 @@ pinned: false
 license: cc
 ---
 
-# 🧪 Sentiment Analysis Techniques
+# 🧪 [Sentiment Analysis Techniques](https://huggingface.co/spaces/AlbanDelamarre/Sentiment_Analysis_Techniques)
 
 A modular Gradio app for **sentiment analysis** built to run on **Hugging Face Spaces**.
 It supports **binary or multi‑class** datasets out of the box and lets you compare four families of techniques:
@@ -22,12 +22,6 @@ It supports **binary or multi‑class** datasets out of the box and lets you com
 4. **Prompt Engineering** — LLM zero/few‑shot classification via prompt templates (LangChain optional)
 
 This project aligns with the practice tasks in the companion brief (load data, build ML baseline, try TF‑IDF, test a transformer, and explore prompt engineering).
-
----
-
-## Live Space / Demo
-
-If you are running this in a public Space, add your Space URL here.
 
 ---
 
