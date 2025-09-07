@@ -17,6 +17,10 @@ class AppState:
         "stopwords": False,
         "stem_or_lemma": "none",  # 'none' | 'stem' | 'lemma'
     })
+
+    # Shared evaluation split (indices into df_clean/df_raw)
+    eval_split: Dict[str, List[int]] = field(default_factory=dict)  # {"train":[...], "test":[...]}
+
     # ML
     train_test_split_config: Dict[str, Any] = field(default_factory=lambda: {
         "test_size": 0.2,
@@ -30,11 +34,13 @@ class AppState:
     # NLP baselines
     nlp_method: Optional[str] = None
     nlp_config: Dict[str, Any] = field(default_factory=dict)
+    nlp_metrics: Dict[str, Any] = field(default_factory=dict)
 
     # Transformers
     transformer_id: Optional[str] = None
     transformer_config: Dict[str, Any] = field(default_factory=dict)
     transformer_pipeline: Any = None
+    tr_metrics: Dict[str, Any] = field(default_factory=dict)
 
     # Prompt Engineering
     prompt_template: str = ""
@@ -45,8 +51,9 @@ class AppState:
         "max_tokens": 128,
         "allowed_labels": [],  # list of strings for multi-class
     })
+    prompt_metrics: Dict[str, Any] = field(default_factory=dict)
 
-# simple singleton pattern
+# simple singleton
 _state: Optional[AppState] = None
 
 def get_state() -> AppState:
