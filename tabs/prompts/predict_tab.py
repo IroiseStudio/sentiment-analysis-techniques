@@ -41,7 +41,6 @@ def _prompt_status_text() -> str:
     )
 
 def _build_llm_from_state():
-    """Instantiate an HF-only LangChain LLM based on current settings."""
     st = _state_getter()
     bk = getattr(st, "prompt_backend", "hf_pipeline")
     cfg = getattr(st, "prompt_config", {}) or {}
@@ -49,9 +48,17 @@ def _build_llm_from_state():
     temperature = float(cfg.get("temperature", 0.0))
     max_tokens = int(cfg.get("max_tokens", 128))
 
+    # --- robust task inference ---
+    task = cfg.get("task")
+    if not task:
+        mid = (model_id or "").lower()
+        # seq2seq models → text2text-generation; causal LMs → text-generation
+        if any(k in mid for k in ["t5", "flan", "mt5", "ul2", "bart", "pegasus", "mbart"]):
+            task = "text2text-generation"
+        else:
+            task = "text-generation"
+
     if bk == "hf_pipeline":
-        task = cfg.get("task", "text2text-generation")
-        # Set generation params on the pipeline (no model_kwargs at wrapper)
         pipe = hf_pipeline(
             task,
             model=model_id,
@@ -60,7 +67,7 @@ def _build_llm_from_state():
             do_sample=(temperature > 0),
         )
         llm = HuggingFacePipeline(pipeline=pipe)
-        return llm, {"backend": "hf_pipeline", "model": model_id}
+        return llm, {"backend": "hf_pipeline", "model": model_id, "task": task}
 
     if bk == "hf_inference":
         token = (
@@ -72,15 +79,17 @@ def _build_llm_from_state():
             raise RuntimeError("Missing HUGGINGFACEHUB_API_TOKEN (or HF_TOKEN). Set it in your env/Space secrets.")
         llm = HuggingFaceHub(
             repo_id=model_id,
+            task=task,   # <<< pass the validated task
             huggingfacehub_api_token=token,
             model_kwargs={"temperature": temperature, "max_new_tokens": max_tokens},
         )
-        return llm, {"backend": "hf_inference", "model": model_id}
+        return llm, {"backend": "hf_inference", "model": model_id, "task": task}
 
     # fallback local
     pipe = hf_pipeline("text2text-generation", model="google/flan-t5-small", max_new_tokens=max_tokens)
     llm = HuggingFacePipeline(pipeline=pipe)
-    return llm, {"backend":"hf_pipeline","model":"google/flan-t5-small"}
+    return llm, {"backend": "hf_pipeline", "model": "google/flan-t5-small", "task": "text2text-generation"}
+
 
 def _format_examples(examples: List[Dict[str,str]]) -> str:
     parts = []
