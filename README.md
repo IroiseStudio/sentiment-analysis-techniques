@@ -1,6 +1,6 @@
 ---
-title: NFL Reddit Sentiment Explorer
-emoji: 🏈
+title: Sentiment Analysis Techniques
+emoji: 🧪
 colorFrom: indigo
 colorTo: green
 sdk: gradio
@@ -11,7 +11,7 @@ pinned: false
 license: cc
 ---
 
-# Sentiment Analysis Wizard
+# 🧪 Sentiment Analysis Techniques
 
 A modular Gradio app for **sentiment analysis** built to run on **Hugging Face Spaces**.
 It supports **binary or multi‑class** datasets out of the box and lets you compare four families of techniques:
