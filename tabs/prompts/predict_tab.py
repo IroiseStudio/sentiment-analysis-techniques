@@ -9,25 +9,32 @@ from sklearn.metrics import classification_report
 from transformers import pipeline as hf_pipeline
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_huggingface import HuggingFacePipeline   # no deprecation
-from langchain_community.llms import HuggingFaceHub     # Hub backend wrapper
+from langchain_huggingface import (
+    HuggingFacePipeline,   # local Transformers pipeline
+    HuggingFaceEndpoint,   # Hugging Face Hub / Inference API
+)
 
 _state_getter: Optional[Callable] = None
 
 def bind_state(getter: Callable):
+    """Bind the global state getter provided by app/state."""
     global _state_getter
     _state_getter = getter
 
 # ---------- helpers ----------
 def _token_detected() -> bool:
-    return bool(os.getenv("HUGGINGFACEHUB_API_TOKEN") or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN"))
+    return bool(
+        os.getenv("HUGGINGFACEHUB_API_TOKEN")
+        or os.getenv("HF_TOKEN")
+        or os.getenv("HUGGING_FACE_HUB_TOKEN")
+    )
 
 def _infer_task(model_id: str, fallback: str = "text2text-generation") -> str:
     mid = (model_id or "").lower()
-    # seq2seq families
+    # seq2seq families → text2text-generation
     if any(k in mid for k in ["flan", "t5", "mt5", "ul2", "bart", "mbart", "pegasus"]):
         return "text2text-generation"
-    # default to causal LM
+    # otherwise default to causal LM generation
     return "text-generation" if fallback not in {"text-generation", "text2text-generation"} else fallback
 
 def _prompt_status_text() -> str:
@@ -39,7 +46,7 @@ def _prompt_status_text() -> str:
     temp = float(cfg.get("temperature", 0.0))
     mx = int(cfg.get("max_tokens", 128))
     labels = cfg.get("allowed_labels", [])
-    bk_name = {"hf_pipeline":"Local (HF Pipeline)","hf_inference":"Hugging Face Hub"}.get(bk, bk)
+    bk_name = {"hf_pipeline": "Local (HF Pipeline)", "hf_inference": "Hugging Face Hub"}.get(bk, bk)
     token_note = " | token: " + ("detected" if _token_detected() else "missing") if bk == "hf_inference" else ""
     return (
         "#### Prompt settings  \n"
@@ -49,6 +56,7 @@ def _prompt_status_text() -> str:
     )
 
 def _build_llm_from_state():
+    """Instantiate a LangChain LLM for the current settings (local or Hub)."""
     st = _state_getter()
     bk = getattr(st, "prompt_backend", "hf_pipeline")
     cfg = getattr(st, "prompt_config", {}) or {}
@@ -58,6 +66,7 @@ def _build_llm_from_state():
     task = cfg.get("task") or _infer_task(model_id)
 
     if bk == "hf_pipeline":
+        # Local Transformers pipeline
         pipe = hf_pipeline(
             task,
             model=model_id,
@@ -75,51 +84,60 @@ def _build_llm_from_state():
             or os.getenv("HUGGING_FACE_HUB_TOKEN")
         )
         if not token:
-            raise RuntimeError("Missing HUGGINGFACEHUB_API_TOKEN (or HF_TOKEN). Set it in your env/Space secrets.")
-        llm = HuggingFaceHub(
+            raise RuntimeError("Missing HUGGINGFACEHUB_API_TOKEN (or HF_TOKEN). Set it in your environment/Space secrets.")
+
+        # Hugging Face Inference via new Endpoint class
+        llm = HuggingFaceEndpoint(
             repo_id=model_id,
-            task=task,
-            huggingfacehub_api_token=token,
-            model_kwargs={"temperature": temperature, "max_new_tokens": max_tokens},
+            task=task,                         # important: explicit task
+            temperature=temperature,
+            max_new_tokens=max_tokens,
+            huggingfacehub_api_token=token,    # passes auth header
         )
         return llm, {"backend": "hf_inference", "model": model_id, "task": task}
 
-    # fallback local
+    # Fallback (shouldn't happen)
     pipe = hf_pipeline("text2text-generation", model="google/flan-t5-small", max_new_tokens=max_tokens)
     llm = HuggingFacePipeline(pipeline=pipe)
-    return llm, {"backend":"hf_pipeline","model":"google/flan-t5-small","task":"text2text-generation"}
+    return llm, {"backend": "hf_pipeline", "model": "google/flan-t5-small", "task": "text2text-generation"}
 
-def _format_examples(examples: List[Dict[str,str]]) -> str:
+def _format_examples(examples: List[Dict[str, str]]) -> str:
     parts = []
     for ex in examples or []:
-        t = (ex.get("text","") or "").strip()
-        l = (ex.get("label","") or "").strip()
+        t = (ex.get("text", "") or "").strip()
+        l = (ex.get("label", "") or "").strip()
         if t and l:
             parts.append(f"Example:\nText: {t}\nLabel: {l}\n")
     return "\n".join(parts)
 
 def _map_to_allowed(raw: str, allowed: List[str]) -> Optional[str]:
+    """Map free-form model output to one of the allowed labels."""
     if not raw:
         return None
-    out = raw.strip().splitlines()[0]
-    out = re.sub(r"[^A-Za-z0-9_\-\s]", "", out).strip().lower()
+    out = raw.strip().splitlines()[0]                 # take first line
+    out = re.sub(r"[^A-Za-z0-9_\-\s]", "", out)       # clean punctuation
+    out = out.strip().lower()
+    # exact match
     for lbl in allowed:
         if out == lbl.lower():
             return lbl
+    # contains / contained-in for lenient mapping
     for lbl in allowed:
         if lbl.lower() in out or out in lbl.lower():
             return lbl
-    syn = {"pos":"positive","neg":"negative","neutral":"neutral"}
-    if out in syn and any(lbl.lower()==syn[out] for lbl in allowed):
-        return next(lbl for lbl in allowed if lbl.lower()==syn[out])
+    # common short synonyms
+    syn = {"pos": "positive", "neg": "negative", "neu": "neutral"}
+    if out in syn and any(lbl.lower() == syn[out] for lbl in allowed):
+        return next(lbl for lbl in allowed if lbl.lower() == syn[out])
     return None
 
 def _labels_fallback() -> List[str]:
     st = _state_getter()
-    labs = getattr(st, "labels_", []) or ["positive","negative"]
+    labs = getattr(st, "labels_", []) or ["positive", "negative"]
     return list(labs)
 
 def _run_llm(text: str) -> Dict[str, Any]:
+    """Run the prompt chain on a single input and return {'raw','label',...}."""
     st = _state_getter()
     cfg = getattr(st, "prompt_config", {}) or {}
     template = getattr(st, "prompt_template", "") or ""
@@ -129,6 +147,7 @@ def _run_llm(text: str) -> Dict[str, Any]:
     llm, meta = _build_llm_from_state()
     prompt = PromptTemplate.from_template(template)
     chain = prompt | llm | StrOutputParser()
+
     output = chain.invoke({
         "text": text,
         "labels": ", ".join(labels),
@@ -156,7 +175,14 @@ def make_tab():
         try:
             res = _run_llm(text)
             note = None if res.get("label") else "Could not map output to an allowed label."
-            return {"label": res.get("label"), "raw": res.get("raw"), "backend": res.get("backend"), "model": res.get("model"), "task": res.get("task"), "note": note}
+            return {
+                "label": res.get("label"),
+                "raw": res.get("raw"),
+                "backend": res.get("backend"),
+                "model": res.get("model"),
+                "task": res.get("task"),
+                "note": note,
+            }
         except Exception as e:
             return {"label": None, "raw": None, "error": str(e)}
 
@@ -187,12 +213,17 @@ def make_tab():
         except Exception as e:
             return {"error": str(e)}
 
+        # Replace None with majority class to avoid metric errors
         if any(p is None for p in y_pred):
             fallback = pd.Series(y_true).mode().iloc[0]
             y_pred = [p if p is not None else fallback for p in y_pred]
 
-        rpt = classification_report(np.array(y_true).astype(str), np.array(y_pred).astype(str),
-                                    output_dict=True, zero_division=0)
+        rpt = classification_report(
+            np.array(y_true).astype(str),
+            np.array(y_pred).astype(str),
+            output_dict=True,
+            zero_division=0
+        )
         mets = {
             "macro_f1": rpt.get("macro avg", {}).get("f1-score", None),
             "micro_f1": rpt.get("micro avg", {}).get("f1-score", None),
