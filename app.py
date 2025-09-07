@@ -116,7 +116,7 @@ def build_ui():
 
         # --- Data ---
         with gr.Tab("Data") as data_tab:
-            with gr.Accordion("About this tab", open=False):
+            with gr.Accordion("Data", open=True):
                 gr.Markdown(
                     "Use this tab to **load a dataset** (CSV/TXT) and map the **text** and **label** columns. "
                     "Apply your selection to store it in app state; the status banner at the top updates automatically."
@@ -125,7 +125,7 @@ def build_ui():
 
         # --- ML Classifiers ---
         with gr.Tab("ML Classifiers"):
-            with gr.Accordion("About this tab", open=False):
+            with gr.Accordion("Machine Learning Classifiers", open=True):
                 gr.Markdown(
                     "Train classical models (TF-IDF + classifier). Pick a model, adjust vectorizer & hyperparameters, "
                     "and click **Train**. This creates a shared **test split** reused by other tabs for fair comparisons."
@@ -139,7 +139,7 @@ def build_ui():
 
         # --- Main NLP ---
         with gr.Tab("Main NLP"):
-            with gr.Accordion("About this tab", open=False):
+            with gr.Accordion("Main NLP Techniques", open=True):
                 gr.Markdown(
                     "Configure **VADER** or simple **keyword rules** (Select), then try single-text predictions and "
                     "**Evaluate on dataset** (Predict). Scores appear below in **Results & Comparison**."
@@ -160,7 +160,7 @@ def build_ui():
 
         # --- Transformers ---
         with gr.Tab("Transformers"):
-            with gr.Accordion("About this tab", open=False):
+            with gr.Accordion("Transformers", open=True):
                 gr.Markdown(
                     "**Sentiment** uses a finetuned classifier (fast, strong for POS/NEG).  \n"
                     "**Zero-shot** is prompt-based NLI: it scores how well the text entails each of your labels, "
@@ -179,7 +179,7 @@ def build_ui():
 
         # --- Prompt Engineering (LangChain, HF-only) ---
         with gr.Tab("Prompt Engineering"):
-            with gr.Accordion("About this tab", open=False):
+            with gr.Accordion("Prompt Engineering", open=True):
                 gr.Markdown(
                     "HF-only prompt flows (LangChain). Design an **instruction + few-shot** template and run it with "
                     "either a **local Transformers pipeline** or **Hugging Face Inference**. We post-process free-form "
