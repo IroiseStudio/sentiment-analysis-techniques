@@ -181,8 +181,8 @@ def build_ui():
         with gr.Tab("Prompt Engineering"):
             with gr.Accordion("Prompt Engineering", open=True):
                 gr.Markdown(
-                    "HF-only prompt flows (LangChain). Design an **instruction + few-shot** template and run it with "
-                    "either a **local Transformers pipeline** or **Hugging Face Inference**. We post-process free-form "
+                    "Design an **instruction + few-shot** template and run it with "
+                    "a **local Transformers pipeline**. We post-process free-form "
                     "LLM outputs back into your allowed label set."
                 )
             with gr.Tabs():

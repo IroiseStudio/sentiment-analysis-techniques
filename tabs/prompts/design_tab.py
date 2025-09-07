@@ -1,6 +1,5 @@
 from __future__ import annotations
-from typing import Callable, Optional, Dict, Any, List
-import os
+from typing import Callable, Optional, List
 import pandas as pd
 import gradio as gr
 
@@ -40,21 +39,16 @@ def _normalize_rows(rows) -> List[List[str]]:
 
 def prompt_status_text() -> str:
     st = _state_getter()
-    backend = getattr(st, "prompt_backend", "none")
     cfg = getattr(st, "prompt_config", {}) or {}
     template = (getattr(st, "prompt_template", "") or DEFAULT_TEMPLATE).strip()
     labels = cfg.get("allowed_labels", []) or _labels_from_state()
     model = cfg.get("model_id") or "—"
     temp = cfg.get("temperature", 0.0)
     mx = cfg.get("max_tokens", 128)
-    task = cfg.get("task", "auto")
-    bk = {"hf_pipeline": "Local (HF Pipeline)", "hf_inference": "Hugging Face Hub", "none": "—"}.get(backend, backend)
-    token_note = ""
-    if backend == "hf_inference":
-        token_note = " | token: " + ("detected" if (os.getenv("HUGGINGFACEHUB_API_TOKEN") or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")) else "missing")
+    task = cfg.get("task", "text2text-generation")
     return (
         "#### Prompt settings  \n"
-        f"• backend: **{bk}** | model: `{model}`{token_note}  \n"
+        f"• backend: **Local (HF Pipeline)** | model: `{model}`  \n"
         f"• task: {task} | temperature: {temp} | max_tokens: {mx}  \n"
         f"• labels: {', '.join(labels)}  \n"
         f"• template preview (first 120 chars): `{template[:120]}{'…' if len(template) > 120 else ''}`"
@@ -63,33 +57,20 @@ def prompt_status_text() -> str:
 def make_tab():
     status_md = gr.Markdown(prompt_status_text())
 
-    gr.Markdown("### Prompt Engineering — Select Backend & Design Prompt")
+    gr.Markdown("### Prompt Engineering — Local Transformers Pipeline")
 
-    backend = gr.Radio(
-        ["Local (HF Pipeline)", "Hugging Face Hub"],
-        value="Local (HF Pipeline)",
-        label="Backend"
-    )
-
-    # One shared TASK dropdown (applies to both backends)
+    # One shared TASK dropdown
     task_dd = gr.Dropdown(
         ["text2text-generation", "text-generation"],
         value="text2text-generation",
         label="Transformers task"
     )
 
-    with gr.Group(visible=True) as grp_local:
+    with gr.Group():
         local_model = gr.Textbox(
             value="google/flan-t5-small",
             label="Local model id (HF Transformers)",
             info="Seq2seq (e.g., FLAN-T5) → text2text-generation; causal LMs → text-generation."
-        )
-
-    with gr.Group(visible=False) as grp_hub:
-        hub_model = gr.Textbox(
-            value="google/flan-t5-small",
-            label="Hub repo_id",
-            info="Requires HUGGINGFACEHUB_API_TOKEN (or HF_TOKEN) in your environment."
         )
 
     with gr.Accordion("Prompt Template & Labels", open=True):
@@ -99,7 +80,7 @@ def make_tab():
         )
         labels_tb = gr.Textbox(value=", ".join(_labels_from_state()), label="Allowed labels (comma-separated)")
         temp = gr.Slider(0.0, 1.5, value=0.0, step=0.1, label="temperature")
-        max_tokens = gr.Slider(16, 512, value=128, step=8, label="max_new_tokens / max_tokens")
+        max_tokens = gr.Slider(16, 512, value=128, step=8, label="max_new_tokens")
 
     with gr.Accordion("Few-shot Examples (optional)", open=False):
         ex_df = gr.Dataframe(
@@ -114,10 +95,6 @@ def make_tab():
 
     save_btn = gr.Button("Save settings")
     out = gr.JSON(value={"status": "No settings saved yet."})
-
-    def on_backend_change(b):
-        return gr.update(visible=(b == "Local (HF Pipeline)")), gr.update(visible=(b == "Hugging Face Hub"))
-    backend.change(on_backend_change, backend, [grp_local, grp_hub])
 
     def on_seed_examples():
         st = _state_getter()
@@ -137,24 +114,14 @@ def make_tab():
     seed_btn.click(on_seed_examples, None, ex_df)
 
     def on_save(
-        backend_v,
         task_v,
         local_model_v,
-        hub_model_v,
         template_v, labels_v, temp_v, max_tokens_v,
         examples_rows
     ):
         st = _state_getter()
 
-        # backend + model
-        if backend_v == "Local (HF Pipeline)":
-            bk = "hf_pipeline"
-            model_id = (local_model_v or "").strip() or "google/flan-t5-small"
-        else:
-            bk = "hf_inference"
-            model_id = (hub_model_v or "").strip() or "google/flan-t5-small"
-
-        # labels + examples
+        model_id = (local_model_v or "").strip() or "google/flan-t5-small"
         allowed = [x.strip() for x in (labels_v or "").split(",") if x.strip()] or _labels_from_state()
         examples = []
         for r in _normalize_rows(examples_rows):
@@ -162,8 +129,8 @@ def make_tab():
                 continue
             examples.append({"text": str(r[0]), "label": str(r[1])})
 
-        # persist
-        st.prompt_backend = bk
+        # persist (backend fixed to local)
+        st.prompt_backend = "hf_pipeline"
         st.prompt_template = (template_v or DEFAULT_TEMPLATE)
         st.prompt_examples = examples
         st.prompt_config = {
@@ -176,7 +143,7 @@ def make_tab():
 
         return {
             "status": "saved",
-            "backend": bk,
+            "backend": "hf_pipeline",
             "model": model_id,
             "task": st.prompt_config["task"],
             "labels": allowed,
@@ -187,7 +154,7 @@ def make_tab():
 
     save_event = save_btn.click(
         on_save,
-        inputs=[backend, task_dd, local_model, hub_model, template_tb, labels_tb, temp, max_tokens, ex_df],
+        inputs=[task_dd, local_model, template_tb, labels_tb, temp, max_tokens, ex_df],
         outputs=[out, status_md]
     )
 
