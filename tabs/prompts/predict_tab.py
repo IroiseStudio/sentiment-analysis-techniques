@@ -24,6 +24,7 @@ def _prompt_status_text() -> str:
     st = _state_getter()
     bk = getattr(st, "prompt_backend", "none")
     cfg = getattr(st, "prompt_config", {}) or {}
+    task = (cfg.get("task") or "auto")
     template = (getattr(st, "prompt_template", "") or "").strip()
     labels = cfg.get("allowed_labels", []) or []
     model = cfg.get("model_id") or "—"
@@ -36,7 +37,7 @@ def _prompt_status_text() -> str:
     return (
         "#### Prompt settings  \n"
         f"• backend: **{bk_name}** | model: `{model}`{token_note}  \n"
-        f"• temperature: {temp} | max_tokens: {mx}  \n"
+        f"• task: {task} | temperature: {temp} | max_tokens: {mx}  \n"
         f"• labels: {', '.join(labels) if labels else '—'}"
     )
 
@@ -143,7 +144,7 @@ def _run_llm(text: str) -> Dict[str, Any]:
 def make_tab():
     status_md = gr.Markdown(_prompt_status_text())
 
-    gr.Markdown("### Prompt Predict (LangChain)")
+    gr.Markdown("### Prompt Predict")
     inp = gr.Textbox(label="Input text", lines=3, placeholder="Type a sentence…")
     btn = gr.Button("Predict")
     out = gr.JSON(value={"label": None, "raw": None, "note": "Save prompt settings first in the Design subtab."})
