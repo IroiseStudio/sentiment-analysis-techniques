@@ -1,0 +1,58 @@
+name: Deploy to HF Spaces
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app.py'
+      - 'state.py'
+      - 'tabs/**'
+      - 'requirements.txt'
+      - 'README.md'
+      - '.huggingface.yml'
+      - '.gitattributes'
+      - '.github/**'
+      - 'data/**'
+      - 'models/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo (with LFS)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Prepare workspace for Sentiment Analysis Techniques
+        run: |
+          set -e
+          rm -rf out && mkdir -p out
+          rsync -av --delete \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.venv/' \
+            --exclude 'data/' \
+            ./ out/
+          echo "----- OUT TREE -----"
+          find out -maxdepth 2 -type f -print
+
+      - name: Init Git for Space content
+        working-directory: out
+        run: |
+          git init
+          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git lfs install || true
+          git add .
+          git commit -m "CI: deploy from GitHub"
+
+      - name: Push to Hugging Face Space
+        working-directory: out
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git remote add space https://huggingface.co/spaces/AlbanDelamarre/Sentiment_Analysis_Techniques
+          git push --force "https://oauth2:${HF_TOKEN}@huggingface.co/spaces/AlbanDelamarre/Sentiment_Analysis_Techniques" HEAD:main

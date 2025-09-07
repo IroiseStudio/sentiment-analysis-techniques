@@ -1,0 +1,9 @@
+gradio>=4.0.0
+pandas
+numpy
+scikit-learn
+nltk
+transformers
+torch
+langchain>=0.2.0
+huggingface_hub
