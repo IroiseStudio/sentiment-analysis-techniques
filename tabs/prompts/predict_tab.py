@@ -1,17 +1,16 @@
 from __future__ import annotations
 from typing import Callable, Optional, Dict, Any, List
-import os, re
+import os, re, time
 import gradio as gr
 import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report
 
-# LangChain + HF backends
 from transformers import pipeline as hf_pipeline
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_huggingface import HuggingFacePipeline   # <— updated import (no deprecation)
-from langchain_community.llms import HuggingFaceHub     # Hub backend (still valid)
+from langchain_huggingface import HuggingFacePipeline   # no deprecation
+from langchain_community.llms import HuggingFaceHub     # Hub backend wrapper
 
 _state_getter: Optional[Callable] = None
 
@@ -19,21 +18,29 @@ def bind_state(getter: Callable):
     global _state_getter
     _state_getter = getter
 
-# ---------------- helpers ----------------
+# ---------- helpers ----------
+def _token_detected() -> bool:
+    return bool(os.getenv("HUGGINGFACEHUB_API_TOKEN") or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN"))
+
+def _infer_task(model_id: str, fallback: str = "text2text-generation") -> str:
+    mid = (model_id or "").lower()
+    # seq2seq families
+    if any(k in mid for k in ["flan", "t5", "mt5", "ul2", "bart", "mbart", "pegasus"]):
+        return "text2text-generation"
+    # default to causal LM
+    return "text-generation" if fallback not in {"text-generation", "text2text-generation"} else fallback
+
 def _prompt_status_text() -> str:
     st = _state_getter()
-    bk = getattr(st, "prompt_backend", "none")
+    bk = getattr(st, "prompt_backend", "hf_pipeline")
     cfg = getattr(st, "prompt_config", {}) or {}
-    task = (cfg.get("task") or "auto")
-    template = (getattr(st, "prompt_template", "") or "").strip()
-    labels = cfg.get("allowed_labels", []) or []
     model = cfg.get("model_id") or "—"
-    temp = cfg.get("temperature", 0.0)
-    mx = cfg.get("max_tokens", 128)
-    bk_name = {"hf_pipeline":"Local (HF Pipeline)","hf_inference":"Hugging Face Hub","none":"—"}.get(bk, bk)
-    token_note = ""
-    if bk == "hf_inference":
-        token_note = " | token: " + ("detected" if (os.getenv("HUGGINGFACEHUB_API_TOKEN") or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")) else "missing")
+    task = cfg.get("task") or _infer_task(model)
+    temp = float(cfg.get("temperature", 0.0))
+    mx = int(cfg.get("max_tokens", 128))
+    labels = cfg.get("allowed_labels", [])
+    bk_name = {"hf_pipeline":"Local (HF Pipeline)","hf_inference":"Hugging Face Hub"}.get(bk, bk)
+    token_note = " | token: " + ("detected" if _token_detected() else "missing") if bk == "hf_inference" else ""
     return (
         "#### Prompt settings  \n"
         f"• backend: **{bk_name}** | model: `{model}`{token_note}  \n"
@@ -48,16 +55,7 @@ def _build_llm_from_state():
     model_id = cfg.get("model_id") or "google/flan-t5-small"
     temperature = float(cfg.get("temperature", 0.0))
     max_tokens = int(cfg.get("max_tokens", 128))
-
-    # --- robust task inference ---
-    task = cfg.get("task")
-    if not task:
-        mid = (model_id or "").lower()
-        # seq2seq models → text2text-generation; causal LMs → text-generation
-        if any(k in mid for k in ["t5", "flan", "mt5", "ul2", "bart", "pegasus", "mbart"]):
-            task = "text2text-generation"
-        else:
-            task = "text-generation"
+    task = cfg.get("task") or _infer_task(model_id)
 
     if bk == "hf_pipeline":
         pipe = hf_pipeline(
@@ -80,7 +78,7 @@ def _build_llm_from_state():
             raise RuntimeError("Missing HUGGINGFACEHUB_API_TOKEN (or HF_TOKEN). Set it in your env/Space secrets.")
         llm = HuggingFaceHub(
             repo_id=model_id,
-            task=task,   # <<< pass the validated task
+            task=task,
             huggingfacehub_api_token=token,
             model_kwargs={"temperature": temperature, "max_new_tokens": max_tokens},
         )
@@ -89,8 +87,7 @@ def _build_llm_from_state():
     # fallback local
     pipe = hf_pipeline("text2text-generation", model="google/flan-t5-small", max_new_tokens=max_tokens)
     llm = HuggingFacePipeline(pipeline=pipe)
-    return llm, {"backend": "hf_pipeline", "model": "google/flan-t5-small", "task": "text2text-generation"}
-
+    return llm, {"backend":"hf_pipeline","model":"google/flan-t5-small","task":"text2text-generation"}
 
 def _format_examples(examples: List[Dict[str,str]]) -> str:
     parts = []
@@ -119,8 +116,8 @@ def _map_to_allowed(raw: str, allowed: List[str]) -> Optional[str]:
 
 def _labels_fallback() -> List[str]:
     st = _state_getter()
-    labs = getattr(st, "labels_", []) or []
-    return list(labs) if labs else ["positive","negative"]
+    labs = getattr(st, "labels_", []) or ["positive","negative"]
+    return list(labs)
 
 def _run_llm(text: str) -> Dict[str, Any]:
     st = _state_getter()
@@ -140,14 +137,14 @@ def _run_llm(text: str) -> Dict[str, Any]:
     parsed = _map_to_allowed(output, labels)
     return {"raw": output, "label": parsed, **meta}
 
-# ---------------- UI ----------------
+# ---------- UI ----------
 def make_tab():
     status_md = gr.Markdown(_prompt_status_text())
 
-    gr.Markdown("### Prompt Predict")
+    gr.Markdown("### Prompt Predict (LangChain)")
     inp = gr.Textbox(label="Input text", lines=3, placeholder="Type a sentence…")
     btn = gr.Button("Predict")
-    out = gr.JSON(value={"label": None, "raw": None, "note": "Save prompt settings first in the Design subtab."})
+    out = gr.JSON(value={"label": None, "raw": None, "note": "Save settings in the Design subtab, then try again."})
 
     gr.Markdown("### Evaluate Prompt on dataset (uses ML test split if available)")
     eval_btn = gr.Button("Evaluate Prompt on dataset")
@@ -159,7 +156,7 @@ def make_tab():
         try:
             res = _run_llm(text)
             note = None if res.get("label") else "Could not map output to an allowed label."
-            return {"label": res.get("label"), "raw": res.get("raw"), "backend": res.get("backend"), "model": res.get("model"), "note": note}
+            return {"label": res.get("label"), "raw": res.get("raw"), "backend": res.get("backend"), "model": res.get("model"), "task": res.get("task"), "note": note}
         except Exception as e:
             return {"label": None, "raw": None, "error": str(e)}
 
@@ -174,16 +171,19 @@ def make_tab():
             return {"error": "Load dataset in Data tab first."}
 
         split = getattr(st, "eval_split", {}) or {}
-        idx_eval = split.get("test", None) or df.index.tolist()
+        idx_eval = split.get("test") or df.index.tolist()
 
         texts = df.loc[idx_eval, tcol].astype(str).tolist()
         y_true = df.loc[idx_eval, lcol].astype(str).tolist()
 
-        y_pred = []
+        y_pred: List[Optional[str]] = []
         try:
             for tx in texts:
                 res = _run_llm(tx)
                 y_pred.append(res.get("label"))
+                # Be gentle to the Hub if using remote backend
+                if getattr(st, "prompt_backend", "hf_pipeline") == "hf_inference":
+                    time.sleep(0.15)
         except Exception as e:
             return {"error": str(e)}
 
@@ -204,7 +204,6 @@ def make_tab():
             "n_eval": len(idx_eval),
             "backend": getattr(st, "prompt_backend", "hf_pipeline"),
             "config": getattr(st, "prompt_config", {}),
-            "template_len": len((getattr(st, "prompt_template", "") or "")),
         }
         return {"status": "ok", **st.prompt_metrics}
 
