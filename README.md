@@ -11,94 +11,84 @@ pinned: false
 license: cc
 ---
 
-# 🧪 [Sentiment Analysis Techniques](https://huggingface.co/spaces/AlbanDelamarre/Sentiment_Analysis_Techniques)
+# 🧪 Sentiment Analysis Techniques
 
-A modular Gradio app for **sentiment analysis** built to run on **Hugging Face Spaces**.
-It supports **binary or multi‑class** datasets out of the box and lets you compare four families of techniques:
+A modular Gradio app for **sentiment analysis** that runs locally or on **Hugging Face Spaces**.  
+It supports **binary** and **multi-class** datasets and lets you compare four families of techniques side-by-side:
 
-1. **ML Classifiers** — scikit‑learn + TF‑IDF
+1. **ML Classifiers** — scikit-learn + TF-IDF
 2. **Main NLP Baselines** — VADER and simple rules
-3. **Transformers** — Hugging Face pipelines
-4. **Prompt Engineering** — LLM zero/few‑shot classification via prompt templates (LangChain optional)
+3. **Transformers** — Hugging Face pipelines (sentiment & zero-shot)
+4. **Prompt Engineering (Local)** — zero/few-shot via a strict prompt template using a **local Transformers pipeline**
 
-This project aligns with the practice tasks in the companion brief (load data, build ML baseline, try TF‑IDF, test a transformer, and explore prompt engineering).
+A **Results & Comparison** section at the bottom summarizes metrics from each family using a shared test split when available.
 
 ---
 
-## App Features
+## What’s Included (by Tab)
 
-- **Data Tab**
+### Data
 
-  - Upload CSV or TXT, or load the included sample (`data/dataset.txt`).
-  - Map **text** and **label** columns. Labels can be **2+ classes** (e.g., `positive`, `negative`, `neutral`, …).
-  - Auto‑infer the set of classes and show **class distribution** and **imbalance warnings** (e.g., min samples per class).
-  - Preprocessing toggles: lowercase, punctuation removal, stopwords, stemming **or** lemmatization.
-  - Persist the preprocessing config in app state.
+- Load CSV/TXT (or the sample `data/dataset.txt`).
+- Choose your **text** and **label** columns.
+- Live status banner (e.g., _dataset loaded: True | total: 350 | positive: 120 | negative: 230_).
+- Quick stats: number of classes and **class distribution**.
+- Optional preprocessing (persisted in app state): lowercase, punctuation removal, stopwords, stemming/lemmatization.
+- Apply the selection to store the dataset in state (auto-updates the banner).
 
-- **ML Classifiers**
+### ML Classifiers
 
-  - Pipeline: `TfidfVectorizer → Model`.
-  - Models: Logistic Regression, Linear SVM, Multinomial Naive Bayes, Random Forest.
-  - **Multi‑class**: handled via native or **One‑vs‑Rest** as appropriate.
-  - Train/test split with **stratify** and seed; warns if a class is too rare for the chosen split.
-  - Metrics:
-    - **Macro F1** (primary) and **micro F1**
-    - Accuracy, macro/micro **Precision** and **Recall**
-    - **Per‑class report** and **Confusion Matrix** (C×C)
-  - Linear models: **top features per class**.
-  - Save/load trained models (Space filesystem).
+- Pipeline: `TfidfVectorizer → Classifier`.
+- Models: Logistic Regression, Linear SVM, Multinomial NB, Random Forest.
+- Stratified **train/test split** with seed; shared across tabs for fair comparisons.
+- Metrics after training: **Accuracy**, **Macro F1**, **Micro F1** and a **confusion matrix heatmap**.
+- Predict subtab: test single texts on the trained model.
 
-- **Main NLP Baselines**
+### Main NLP (Baselines)
 
-  - **VADER** (best as a binary or 3‑way positive/neutral/negative baseline).
-  - **Rules**: editable keyword lists per class (works for multi‑class by adding lists for each class).
-  - Show raw scores and chosen label.
+- **VADER** or **keyword rules** (you can edit per-class keyword lists).
+- Predict subtab: single-text predictions and **Evaluate on dataset** (uses the shared test split if present).
 
-- **Transformers**
+### Transformers
 
-  - Pick a HF model and run inference via `transformers` pipeline (`text-classification`).
-  - Works for **multi‑label** or **multi‑class** models (we expose label mapping and thresholding when needed).
-  - Example defaults:
-    - `distilbert-base-uncased-finetuned-sst-2-english` (binary)
-    - `cardiffnlp/twitter-roberta-base-sentiment-latest` (3‑class; mapped as is)
-  - Controls: max length, truncation, batch size.
+- Two modes:
+  - **Sentiment**: load a finetuned `text-classification` model (e.g., `distilbert-base-uncased-finetuned-sst-2-english`, or a 3-class model like `cardiffnlp/twitter-roberta-base-sentiment-latest`).
+  - **Zero-shot**: label texts without training using an NLI model (e.g., `facebook/bart-large-mnli`) and your label list/hypothesis template.
+- Predict subtab: single-text predictions and **Evaluate on dataset**.
 
-- **Prompt Engineering**
-  - Zero/few‑shot classification using an LLM with a **prompt template**.
-  - **Multi‑class aware**: you specify the allowed class list; the prompt enumerates them and the parser enforces one of those outputs.
-  - Two subtabs:
-    - **Prompt Design**: base prompt, few‑shot examples, temperature, max tokens.
-    - **Predict**: free‑form input; display raw LLM output + parsed label.
-  - **Backends** (choose one):
-    - **Local HF models** (via `text-generation` pipeline) where feasible.
-    - **HF Inference API** (requires token).
-    - **OpenAI** (requires API key).
+### Prompt Engineering (Local only)
+
+- Design a strict **prompt template** that enumerates the allowed labels and (optionally) includes **few-shot examples**.
+- Backend: **Local Transformers pipeline** only (no external APIs or tokens).
+- Controls: model id (e.g., `google/flan-t5-small`), task (`text2text-generation` for seq2seq or `text-generation` for causal LMs), temperature, max new tokens.
+- Predict subtab: shows both the model’s **raw output** and the **parsed label**. Evaluate on dataset to log metrics into **Results & Comparison**.
 
 ---
 
 ## Project Layout
 
-```
-app.py                 # Gradio entry point
-state.py               # Shared AppState container
+```text
+app.py                 # Gradio app entry
+state.py               # Shared state (dataset, splits, configs, metrics)
+
 tabs/
-  data_tab.py          # Upload, preview, preprocessing
+  data_tab.py          # Upload, map columns, preprocessing
   ml/
-    train_tab.py       # Train classic models
-    predict_tab.py     # Predict using trained model
+    train_tab.py       # Train TF-IDF + classical models
+    predict_tab.py     # Predict with trained model
   nlp/
-    select_tab.py      # VADER / Rules options
-    predict_tab.py     # Baseline predictions
+    select_tab.py      # VADER / Rules config
+    predict_tab.py     # Baseline predictions + evaluation
   transformers/
-    select_tab.py      # HF model picker and params
-    predict_tab.py     # Transformer predictions
+    select_tab.py      # Sentiment / Zero-shot config
+    predict_tab.py     # Transformer predictions + evaluation
   prompts/
-    design_tab.py      # Prompt template + few‑shot examples
-    predict_tab.py     # Run LLM with the prompt
-models/
-  saved/               # Persisted sklearn models (joblib)
+    design_tab.py      # Local prompt template + few-shot setup
+    predict_tab.py     # Local prompting predictions + evaluation
+
 data/
-  dataset.txt          # Sample dataset (sentence, label)
+  dataset.txt          # Sample dataset (text, label)
+
 requirements.txt
 README.md
 ```
@@ -107,113 +97,102 @@ README.md
 
 ## Dataset Format
 
-Text column + label column. Labels can be any number of classes:
-
-- Binary: `positive`, `negative`
-- Multi‑class: e.g., `very_negative`, `negative`, `neutral`, `positive`, `very_positive`
+Two columns: **text** + **label**. Labels may be **2+ classes**.
 
 **CSV example**
 
-```
+```csv
 sentence,label
-"I loved this movie so much","positive"
-"Terrible plot and acting","negative"
-"It's fine, nothing special","neutral"
+"I loved this movie so much",positive
+"Terrible plot and acting",negative
+"It's fine, nothing special",neutral
 ```
 
-**Provided sample**: `data/dataset.txt` (tuple‑style rows, binary).
+**TXT example (one item per line)**
+
+```text
+I loved this movie so much	positive
+Terrible plot and acting	negative
+It's fine, nothing special	neutral
+```
+
+The repo includes a small sample at `data/dataset.txt`.
+
+---
+
+## Running Locally
+
+```bash
+python -m venv .venv
+# Windows PowerShell
+. .venv/Scripts/Activate.ps1
+# macOS/Linux
+# source .venv/bin/activate
+
+pip install -r requirements.txt
+python app.py
+```
+
+The app loads at `http://127.0.0.1:7860/`.  
+(Use `share=True` in `demo.launch()` for a temporary public link while developing.)
 
 ---
 
 ## Running on Hugging Face Spaces
 
-### 1) Create a Space
+1. Create a Space (SDK: **Gradio**, Hardware: **CPU Basic** is fine for small models).
+2. Push the repo files (`app.py`, `state.py`, `tabs/…`, `requirements.txt`, `README.md`, `data/dataset.txt`).
+3. Build logs will show dependency install and the app will come up automatically.
 
-- Space SDK: **Gradio**.
-- Hardware: **CPU Basic** is enough for classical/TF‑IDF and small transformer inference. For larger models, pick a bigger instance or use the **HF Inference API**.
+**No secrets required** — the app uses local pipelines only.  
+If a rebuild seems stuck, push a new commit or use **Settings → Factory reset** in the Space.
 
-### 2) Repo files
+---
 
-Push this repo (or drag‑and‑drop in the Space UI). Include:
+## Metrics & Comparison
 
-- `app.py`, `state.py`, `tabs/…`, `requirements.txt`, `README.md`, `data/dataset.txt`
+Wherever possible, tabs use the same **stratified test split** created in the ML tab. Each family reports:
 
-### 3) Dependencies
+- **Accuracy**, **Macro F1**, **Micro F1**
+- **Confusion matrix heatmap** (C×C)
 
-Spaces auto‑install from `requirements.txt`. Suggested minimal set:
+The **Results & Comparison** section aggregates the latest metrics for quick side-by-side review.
 
-```
+---
+
+## Tips for Prompt Engineering
+
+- Keep outputs short and deterministic: `temperature=0.0`, `max_new_tokens` around 16–32.
+- End your template with a strict instruction, e.g.:
+  ```
+  Return exactly one label from {labels} and nothing else.
+  Text: {text}
+  Final label:
+  ```
+- Add 1–3 few-shot examples per class if available.
+- For multi-class (e.g., positive/neutral/negative), ensure `{labels}` contains **all** classes.
+
+---
+
+## Requirements
+
+Minimal set for the current app:
+
+```text
 gradio>=4.0.0
 pandas
-scikit-learn
 numpy
+scikit-learn
+matplotlib
 nltk
-transformers
-torch   # if you run local transformer pipelines
-langchain>=0.2.0    # optional, for Prompt Engineering tab
-huggingface_hub     # optional, if using Inference API
+transformers>=4.41
+torch
 ```
 
-If you use VADER, we’ll download the lexicon at startup in code.
-
-### 4) Secrets (optional)
-
-Add secrets in **Settings → Repository secrets** if you plan to call hosted APIs:
-
-- `HUGGINGFACEHUB_API_TOKEN` — to use the **HF Inference API**
-- `OPENAI_API_KEY` — to use OpenAI via LangChain
-
-The app will detect available keys and enable backends accordingly.
-
-### 5) Launch
-
-Spaces will run `app.py` automatically. The Gradio UI will appear after build.
+> If you previously installed LangChain or HF Hub clients, they’re not required for this version of the Prompt Engineering tab.
 
 ---
 
-## Evaluation
+## License
 
-On the **ML Train** subtab we compute:
-
-- **Macro F1** (primary) and **Micro F1**
-- Accuracy, macro/micro Precision and Recall
-- **Per‑class classification report**
-- **Confusion matrix** sized **C×C** (C = number of classes)
-
-Optional: ROC‑AUC (one‑vs‑rest) when decision scores are available.
-
----
-
-## Model Options (Transformers)
-
-- **Binary**: `distilbert-base-uncased-finetuned-sst-2-english`
-- **3‑class**: `cardiffnlp/twitter-roberta-base-sentiment-latest`  
-  (We keep its 3 labels; for binary comparisons you can map or merge in the UI.)
-
-You can also paste any public `text-classification` model ID. Larger models may be slow on CPU Spaces—prefer the HF Inference API or smaller checkpoints.
-
----
-
-## Prompt Engineering Tips (Multi‑class)
-
-- **Enumerate allowed labels** in the prompt:
-  ```
-  You are a sentiment classifier. Return exactly one of: {labels}.
-  Text: "{text}"
-  Answer:
-  ```
-- Add **few‑shot examples** for each class to stabilize outputs.
-- Use an **output parser** (regex / LangChain parser) to coerce the response to the set of labels.
-- For ambiguous text, consider **self‑consistency** (sample N times, majority vote).
-
----
-
-## Roadmap
-
-- Batch prediction upload (CSV/TXT) across all tabs.
-- Token attributions for transformers.
-- Exportable experiment reports (Markdown/CSV).
-- Optional fine‑tuning flow for transformers.
-- Better guardrails for prompt outputs (self‑consistency, majority vote).
-
----
+Creative Commons (CC). See the Space header for details.
